@@ -9,8 +9,8 @@ User={安装 python3 环境的任意用户}
 WorkingDirectory={仓库绝对路径}
 Restart=on-failure
 RestartSec=5s
-ExecStart={uv 的绝对路径} run python UstcNetwork.py {ustc-network.local.conf 的绝对路径}
-ExecReload={uv 的绝对路径} run python UstcNetwork.py {ustc-network.local.conf 的绝对路径}
+ExecStart={uv 的绝对路径} run python -u UstcNetwork.py {ustc-network.local.conf 的绝对路径}
+ExecReload={uv 的绝对路径} run python -u UstcNetwork.py {ustc-network.local.conf 的绝对路径}
 LimitNOFILE=1048576
 
 [Install]

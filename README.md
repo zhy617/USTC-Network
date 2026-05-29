@@ -106,12 +106,14 @@ User=pi
 WorkingDirectory=/home/pi/USTC-Network
 Restart=on-failure
 RestartSec=5s
-ExecStart=/home/pi/.local/bin/uv run python UstcNetwork.py /home/pi/USTC-Network/ustc-network.local.conf
+ExecStart=/home/pi/.local/bin/uv run python -u UstcNetwork.py /home/pi/USTC-Network/ustc-network.local.conf
 LimitNOFILE=1048576
 
 [Install]
 WantedBy=multi-user.target
 ```
+
+注意把示例中的 `User`、`WorkingDirectory`、`ExecStart` 路径替换成本机真实值。例如仓库在 `/home/user/Repositories/USTC-Network`，`uv` 在 `/home/user/.local/bin/uv` 时，应使用对应的 `/home/user/...` 路径，而不是示例里的 `/home/pi/...`。
 
 启用并启动：
 
@@ -134,6 +136,41 @@ sudo systemctl restart ustc-network.service
 ```
 
 仓库里也提供了模板：`systemd/ustc-network.service`。
+
+### systemd 常见问题
+
+如果日志里出现：
+
+```text
+Failed to locate executable /home/pi/.local/bin/uv: No such file or directory
+Failed at step EXEC spawning /home/pi/.local/bin/uv: No such file or directory
+```
+
+说明 service 文件里的 `uv` 路径还是示例路径，或当前用户不是 `pi`。用下面命令确认真实路径后，更新 `/etc/systemd/system/ustc-network.service`：
+
+```bash
+command -v uv
+pwd
+id -un
+```
+
+修改后重新加载并重启：
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl reset-failed ustc-network.service
+sudo systemctl restart ustc-network.service
+```
+
+如果看到：
+
+```text
+Current command vanished from the unit file
+```
+
+通常表示 service 文件刚被修改过，systemd 发现旧启动命令和新 unit 不一致；重新 `daemon-reload` 并重启服务即可。
+
+如果 `journalctl -u ustc-network.service -f` 只显示 systemd 的 `Started USTC Suzhou Network Service.`，但没有程序自己的 `[Log] ...` 输出，优先确认 `ExecStart` 中使用了 `python -u`。`-u` 会关闭 Python 标准输出缓冲，让日志实时进入 journal。
 
 ## Windows 调试
 
