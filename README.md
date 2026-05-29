@@ -10,10 +10,58 @@ USTC 苏州校区校园网自动认证工具，适配 `http://20.20.20.3` 准入
 - 通过外网检测主机判断网络是否可用
 - 提供命令行版本和 PySide6 GUI 版本
 
-## 安装依赖
+## 推荐：使用 uv
 
-```bash
+`uv` 会在项目目录自动维护独立的 `.venv`，并在 `uv run` 时同步依赖后再运行，适合避免系统 Python、全局 pip 和其他项目之间的冲突。
+
+Windows 安装 uv：
+
+```powershell
+powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
+```
+
+安装后重新打开 PowerShell，进入仓库目录。命令行版本一键启动：
+
+```powershell
+.\run.ps1
+```
+
+GUI 版本一键启动：
+
+```powershell
+.\run.ps1 -Gui
+```
+
+如果只想提前部署环境，不立刻运行：
+
+```powershell
+.\setup.ps1
+.\setup.ps1 -Gui
+.\setup.ps1 -Build
+```
+
+也可以不用脚本，直接运行：
+
+```powershell
+uv run python UstcNetwork.py ustc-network.conf
+uv run --extra gui python UstcNetwork_GUI.py
+```
+
+## 备用：使用 pip
+
+如果不使用 uv，也可以手动创建虚拟环境并安装依赖：
+
+```powershell
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
 pip install -r requirements.txt
+```
+
+`requirements.txt` 只包含命令行版本所需的最小依赖。GUI 和打包依赖体积较大，按需安装：
+
+```powershell
+pip install -r requirements-gui.txt
+pip install -r requirements-build.txt
 ```
 
 ## 命令行使用

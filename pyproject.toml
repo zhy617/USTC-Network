@@ -1,0 +1,21 @@
+[project]
+name = "ustc-network"
+version = "0.1.0"
+description = "USTC Suzhou campus network portal auto login"
+readme = "README.md"
+requires-python = ">=3.10,<3.15"
+dependencies = [
+    "requests>=2.31,<3",
+]
+
+[project.optional-dependencies]
+gui = [
+    "PySide6>=6.10,<7",
+]
+build = [
+    "PySide6>=6.10,<7",
+    "pyinstaller>=6.15,<7",
+]
+
+[tool.uv]
+package = false
