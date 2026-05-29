@@ -1,14 +1,16 @@
 [Unit]
 Description=USTC Suzhou Network Service
-After=network.target
+After=network-online.target
+Wants=network-online.target
 
 [Service]
 Type=simple
 User={安装 python3 环境的任意用户}
+WorkingDirectory={仓库绝对路径}
 Restart=on-failure
 RestartSec=5s
-ExecStart=/usr/bin/python3 {UstcNetwork.py 的绝对路径} {ustc-network.conf 的绝对路径}
-ExecReload=/usr/bin/python3 {UstcNetwork.py 的绝对路径} {ustc-network.conf 的绝对路径}
+ExecStart={uv 的绝对路径} run python UstcNetwork.py {ustc-network.local.conf 的绝对路径}
+ExecReload={uv 的绝对路径} run python UstcNetwork.py {ustc-network.local.conf 的绝对路径}
 LimitNOFILE=1048576
 
 [Install]

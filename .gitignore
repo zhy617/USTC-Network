@@ -178,3 +178,8 @@ pip-selfcheck.json
 
 # End of https://www.toptal.com/developers/gitignore/api/python,venv
 
+# Local credentials and GUI settings
+ustc-network.local.conf
+*.local.conf
+config.ini
+
