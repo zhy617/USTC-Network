@@ -3,6 +3,7 @@
 
 import sys
 import time
+import json
 
 from ustc_suzhou_auth import DEFAULT_CHECK_HOSTS, UstcSuzhouAuthenticator
 
@@ -29,6 +30,9 @@ class UstcNetwork:
 
         if len(lines) < 2 or not lines[0] or not lines[1]:
             raise ValueError("config file must contain username and password in the first two lines")
+
+        if lines[0].startswith("{") and lines[0].endswith("}"):
+            raise ValueError("username should not include braces; write 133... instead of {133...}")
 
         check_interval = DEFAULT_CHECK_INTERVAL
         if len(lines) >= 3 and lines[2]:
@@ -64,17 +68,32 @@ class UstcNetwork:
                     self._last_status = "online"
                 else:
                     self._login()
+                time.sleep(self._check_interval)
+            except KeyboardInterrupt:
+                self._log("Log", "stopped by user")
+                break
             except Exception as exc:
                 self._last_status = "error"
                 self._log("Exception", str(exc))
-
-            time.sleep(self._check_interval)
+                time.sleep(self._check_interval)
 
 
 def main(argv=None):
     argv = argv or sys.argv
+    if len(argv) == 3 and argv[1] == "--debug-login":
+        username, password, _, check_hosts = UstcNetwork._read_config(argv[2])
+        authenticator = UstcSuzhouAuthenticator(
+            username,
+            password,
+            check_hosts=check_hosts,
+        )
+        result = authenticator.debug_login()
+        print(json.dumps(result, ensure_ascii=False, indent=2))
+        return 0
+
     if len(argv) != 2:
         print("Usage: python UstcNetwork.py ustc-network.conf")
+        print("Debug: python UstcNetwork.py --debug-login ustc-network.conf")
         return 2
 
     network = UstcNetwork(argv[1])

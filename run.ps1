@@ -1,5 +1,6 @@
 param(
-    [switch]$Gui
+    [switch]$Gui,
+    [switch]$Debug
 )
 
 $ErrorActionPreference = "Stop"
@@ -11,7 +12,9 @@ if (-not (Get-Command uv -ErrorAction SilentlyContinue)) {
     exit 1
 }
 
-if ($Gui) {
+if ($Debug) {
+    uv run python UstcNetwork.py --debug-login ustc-network.conf
+} elseif ($Gui) {
     uv run --extra gui python UstcNetwork_GUI.py
 } else {
     uv run python UstcNetwork.py ustc-network.conf

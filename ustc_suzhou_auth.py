@@ -1,9 +1,12 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
+import json
+import re
 import subprocess
 import sys
 import time
+from urllib.parse import urljoin
 
 import requests
 
@@ -65,18 +68,24 @@ class UstcSuzhouAuthenticator:
         self.session = requests.Session()
         self.session.trust_env = False
 
-    def _headers(self, referer=HOME_URL):
+    def _headers(self, referer=HOME_URL, xhr=True):
         headers = {
-            "Accept": "*/*",
-            "Origin": PORTAL_ORIGIN,
-            "Referer": referer,
+            "Accept": "*/*" if xhr else "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
             "User-Agent": (
                 "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
                 "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 "
                 "Safari/537.36 Edg/148.0.0.0"
             ),
-            "X-Requested-With": "XMLHttpRequest",
+            "Accept-Language": "zh-CN,zh;q=0.9",
+            "Cache-Control": "no-cache",
+            "Pragma": "no-cache",
         }
+        if referer:
+            headers["Referer"] = referer
+        if xhr:
+            headers["Origin"] = PORTAL_ORIGIN
+            headers["Content-Type"] = "application/x-www-form-urlencoded; charset=UTF-8"
+            headers["X-Requested-With"] = "XMLHttpRequest"
         if self.auth_session_id:
             headers["Cookie"] = "AUTHSESSID=" + self.auth_session_id
         return headers
@@ -86,17 +95,74 @@ class UstcSuzhouAuthenticator:
         if auth_session_id:
             self.auth_session_id = auth_session_id
 
+    def _prepare_login(self):
+        referer = self._visit_and_find_login_page(HOME_URL)
+        if not referer:
+            referer = self._visit_and_find_login_page(PORTAL_ORIGIN + "/")
+
+        referer = referer or LOGIN_REFERER
+        self._visit_page(referer)
+        return referer
+
+    def _visit_page(self, url, referer=PORTAL_ORIGIN + "/"):
+        response = self.session.get(
+            url,
+            headers=self._headers(referer, xhr=False),
+            timeout=self.timeout,
+            allow_redirects=True,
+        )
+        self._remember_cookie(response)
+        return response
+
+    def _visit_and_find_login_page(self, url):
+        response = self._visit_page(url)
+        return self._extract_login_page(response)
+
+    @staticmethod
+    def _extract_login_page(response):
+        candidates = []
+        if response.url:
+            candidates.append(response.url)
+
+        text = response.text or ""
+        patterns = (
+            r"""['"]([^'"]*/ac_portal/[^'"]+)['"]""",
+            r"""(?:href|src)\s*=\s*['"]([^'"]+)['"]""",
+            r"""location(?:\.href)?\s*=\s*['"]([^'"]+)['"]""",
+        )
+        for pattern in patterns:
+            candidates.extend(re.findall(pattern, text, flags=re.IGNORECASE))
+
+        preferred = []
+        fallback = []
+        for candidate in candidates:
+            full_url = urljoin(PORTAL_ORIGIN + "/", candidate)
+            if "/ac_portal/" not in full_url or full_url.endswith("/login.php"):
+                continue
+            if "disclaimer_antileak" in full_url or "pc.html" in full_url:
+                preferred.append(full_url)
+            elif "needauth" not in full_url:
+                fallback.append(full_url)
+
+        if preferred:
+            return preferred[0]
+        if fallback:
+            return fallback[0]
+        return None
+
     def login(self):
         if not self.username:
             raise ValueError("username cannot be empty")
         if not self.password:
             raise ValueError("password cannot be empty")
 
+        login_referer = self._prepare_login()
         auth_tag = str(int(time.time() * 1000))
+        encrypted_password = encrypt_rc4(self.password, auth_tag)
         data = {
             "opr": "pwdLogin",
             "userName": self.username,
-            "pwd": encrypt_rc4(self.password, auth_tag),
+            "pwd": encrypted_password,
             "auth_tag": auth_tag,
             "rememberPwd": "0",
         }
@@ -104,16 +170,51 @@ class UstcSuzhouAuthenticator:
         response = self.session.post(
             LOGIN_URL,
             data=data,
-            headers=self._headers(LOGIN_REFERER),
+            headers=self._headers(login_referer),
             timeout=self.timeout,
         )
         self._remember_cookie(response)
+        login_result = self._response_json(response)
 
         info = self.get_info()
         if info and info.get("success"):
             return True, self.describe_info(info), info
 
-        return False, self._failure_message(response, info), info
+        return False, self._failure_message(response, info, login_result), info
+
+    def debug_login(self):
+        login_referer = self._prepare_login()
+        auth_tag = str(int(time.time() * 1000))
+        encrypted_password = encrypt_rc4(self.password, auth_tag)
+        data = {
+            "opr": "pwdLogin",
+            "userName": self.username,
+            "pwd": encrypted_password,
+            "auth_tag": auth_tag,
+            "rememberPwd": "0",
+        }
+
+        response = self.session.post(
+            LOGIN_URL,
+            data=data,
+            headers=self._headers(login_referer),
+            timeout=self.timeout,
+        )
+        self._remember_cookie(response)
+        login_result = self._response_json(response)
+        info = self.get_info()
+
+        return {
+            "login_referer": login_referer,
+            "login_status_code": response.status_code,
+            "login_content_type": response.headers.get("Content-Type", ""),
+            "login_json": login_result,
+            "login_text": self._response_text(response)[:500],
+            "has_auth_session_cookie": bool(self.auth_session_id),
+            "auth_tag_len": len(auth_tag),
+            "encrypted_password_len": len(encrypted_password),
+            "info_json": info,
+        }
 
     def get_info(self):
         response = self.session.post(
@@ -123,10 +224,7 @@ class UstcSuzhouAuthenticator:
             timeout=self.timeout,
         )
         self._remember_cookie(response)
-        try:
-            return response.json()
-        except ValueError:
-            return None
+        return self._response_json(response)
 
     def logout(self):
         response = self.session.get(
@@ -184,18 +282,58 @@ class UstcSuzhouAuthenticator:
         return "logged in: " + ", ".join(details)
 
     @staticmethod
-    def _failure_message(response, info):
+    def _response_text(response):
+        content = response.content or b""
+        for encoding in ("utf-8", "gbk", "gb18030"):
+            try:
+                return content.decode(encoding)
+            except UnicodeDecodeError:
+                pass
+
+        response.encoding = response.apparent_encoding or response.encoding
+        return response.text or ""
+
+    @staticmethod
+    def _response_json(response):
+        text = UstcSuzhouAuthenticator._response_text(response).strip()
+        if text:
+            try:
+                return json.loads(text)
+            except ValueError:
+                pass
+
+        try:
+            return response.json()
+        except ValueError:
+            return None
+
+    @staticmethod
+    def _failure_message(response, info, login_result=None):
+        parts = []
+        if login_result:
+            msg = login_result.get("msg") or login_result.get("message")
+            location = login_result.get("location")
+            success = login_result.get("success")
+            if msg:
+                parts.append("login.php: " + str(msg))
+            elif success is not None:
+                parts.append("login.php success=%s" % success)
+            if location:
+                parts.append("login redirect: " + str(location))
+
         if info:
             msg = info.get("msg") or info.get("message")
             location = info.get("location")
-            if msg and location:
-                return "%s; redirect: %s" % (msg, location)
             if msg:
-                return str(msg)
+                parts.append("info.php: " + str(msg))
             if location:
-                return "redirect: " + str(location)
+                parts.append("info redirect: " + str(location))
+            if parts:
+                return "; ".join(parts)
 
         text = (response.text or "").strip()
         if text:
-            return text[:200]
+            parts.append("login response: " + text[:200])
+        if parts:
+            return "; ".join(parts)
         return "login request sent, but status check did not confirm success"
